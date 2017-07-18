@@ -6,6 +6,7 @@ You need NodeJS to run the script.
 Go to main directory and run : `npm install`
 
 # Running
+Start the command `node parser`
 The repository contains a sample input file named `input.csv`.
 Data is extrated in the file named `output.csv`
 
