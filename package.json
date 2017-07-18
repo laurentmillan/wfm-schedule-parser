@@ -1,0 +1,17 @@
+{
+  "name": "WFM-parser",
+  "version": "0.1.0",
+  "description": "Parse Genesys WFM individual schedule report to extract a CSV file containing generic activities for given timeslots.",
+  "main": "parse.js",
+  "dependencies": {
+    "fast-csv": "*",
+    "moment": "*",
+    "lodash": "*"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Laurent Millan <laurent.millan@genesys.com>",
+  "license": "MIT"
+}
