@@ -25,4 +25,4 @@ Options can be passed as arguments to the command line.
 
 Example of line with all options (timeslots start at 7:00 am, end at 9:00 pm and last 10min)
 
-`node parse -s "7:00 am" -e "9:00 pm" -ts 10`.
+`node parse -s "7:00 am" -e "9:00 pm" -ts 10 -f input.csv`.
