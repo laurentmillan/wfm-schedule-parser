@@ -23,7 +23,6 @@ Options can be passed as arguments to the command line.
 * [`-f` or `-file`] `filename`
   * `filename` is the name of the file used as input (ex: input.csv)
 * [`-a` or `-activitymap`] will generate a file that maps all activity specific names (based on parsed file) to a generic name (ex: any specific activity with "Break" will give generic "B"). This file is created as "activity_map.csv".
-* [`-use_as` or `-use_activityset`] will use activity set each timesolt where there is no other activity
 
 Example of command lines :
 * Timeslots start at 7:00 am, end at 9:00 pm and last 10min. Input file is input_wfm.csv.
@@ -34,9 +33,6 @@ Example of command lines :
 
 `node parse -f input_wfm.csv -a`
 
-* It will work the same way as the first line except it will place an activity based on the activityset for each timeslot where there is nothing else.
-
-`node parse -s "7:00 am" -e "9:00 pm" -ts 10 -f input_wfm.csv -use_as`
 
 
 ### Activity Map file

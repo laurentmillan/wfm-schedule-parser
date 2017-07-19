@@ -10,7 +10,6 @@
   *   > -ts, -timeslot => duration of timeslots
   *   > -f, -file => input file name
   *   > -a, -activtymap => will generate the specific/geenric activities names map csv file
-  *   > -use_as, -use_activityset => will use activity set each timesolt where there is no other activity
 */
 
 var fs = require("fs")
@@ -23,7 +22,6 @@ var lineNbr = 0;
 var finalTab;
 var activitiesList = [];
 var activityMap = [];
-var useActivitySet = false;
 var inputFilename = "input.csv";
 
 var tStart = moment("8:00 am", "h:m a");  // Start of the day for timeslots
@@ -65,10 +63,6 @@ process.argv.forEach(function (val, index, array) {
       case '-activitymap':
         runMode = RUNMODE.ACTIVITYMAP;
         break;
-      case '-use_as':
-      case '-use_activityset':
-        useActivitySet = true;
-        break;
       default:
         break;
     }
@@ -107,8 +101,7 @@ function parse(){
     \t start: "+tStart.format("h:mm a")+"\n\
     \t end: "+tEnd.format("h:mm a")+"\n\
     \t timeslot: "+tTimeslotLength+" minutes\n\
-    \t inputfile: "+inputFilename+" \n\
-    \t will "+((!useActivitySet)?"NOT ":"")+"use activitySets where there is no other activity defined");
+    \t inputfile: "+inputFilename+" \n");
     console.log("********************************************\n")
 
   /* Create a list of time slots from 8am to 7:30 pm */
@@ -160,21 +153,13 @@ function parse(){
             date: date,
             activitySet: {
               activityName: activityName,
-              starttime: moment(starttime, "h:m a"),
-              endtime: moment(endtime, "h:m a")
+              starttime: (starttime!="")?moment(starttime, "h:m a"):moment(tStart, "h:m a"), // if there is no time, put tStart
+              endtime: (endtime!="")?moment(endtime, "h:m a"):moment(tEnd, "h:m a") // if there is no time, put tEnd
             },
             activities:[]
           }
 
-          // If this days mentions "Repos", then it's a day off for the agent.
-          if(activityName.match(/.*Repos.*/gi)){
-            // Add the day off as an activity
-            agentDailyData.activities.push({
-              activityName: activityName,
-              starttime: tStart,
-              endtime: tEnd
-            });
-          }
+
           // Add this day to the agentDayActivityTab tab
           agentDayActivityTab.push(agentDailyData);
         }
@@ -297,7 +282,7 @@ function parse(){
           }
         });
 
-        if(!foundActivity && useActivitySet){
+        if(!foundActivity){
           // If the activity has time in this time slot
           if(getActivityTimeInTimeslot(data.activitySet, timeslot)){
             // Translate from the specific activity to a generic one
