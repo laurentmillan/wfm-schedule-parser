@@ -44,6 +44,9 @@ This file `activity_map.csv` is a CSV to map specific activity name (like "Break
 The first column is the specific name (ie: "Break S1") and the second is the generic one (ie: "B")
 
 Example of file :
+
+A|B
+--|--
 Break S1 | B
 Break S2 | B
 BillingVoice | I
@@ -51,6 +54,9 @@ VacationVoice | I
 BillingEmail | @
 
 As the parser uses regexp to match an activity name you could get the same result with the following file:
+
+A|B
+--|--
 Break | B
 Voice | I
 Email | @
