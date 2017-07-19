@@ -9,7 +9,7 @@ var csv = require("fast-csv")
 var moment = require("moment")
 var _ = require("lodash")
 
-var fullData = [];  // The tab containing all teh data for each agent, each day
+var agentDayActivityTab = [];  // The tab containing all teh data for each agent, each day
 var lineNbr = 0;
 var finalTab;
 var activitiesList = [];
@@ -18,9 +18,9 @@ var activitiesList = [];
 var tStart = moment("8:00 am", "h:m a");
 var tEnd = moment("7:30 pm", "h:m a");
 var t = tStart.clone();
-var creneaux = [];
+var timeslots = [];
 do{
-  creneaux.push(t);
+  timeslots.push(t);
   var t = t.clone().add(15, 'minutes')
 }while(t.isBefore(tEnd));
 
@@ -34,45 +34,45 @@ fs.createReadStream("input.csv")
   if(lineNbr>3){
     var site = data[0];         // Site name
     var tz = data[1];           // Timezone
-    var equipe = data[2];       // Team
-    var id_employe = data[3];   // Employee Id
-    var agent = data[4];        // Agent name
-    var jour = data[5];         // Day
-    var activite = data[7];     // Acivity name
+    var team = data[2];       // Team
+    var employeeId = data[3];   // Employee Id
+    var agentName = data[4];        // Agent name
+    var date = data[5];         // Day
+    var activityName = data[7];     // Acivity name
     var starttime = data[8];    // Start time of the activity
     var endtime = data[9];      // End time of the activity
 
-    // If the line contains a data in "jour" > it's the reference line for this date
-    if(jour != ""){
+    // If the line contains a data in "date" > it's the reference line for this date
+    if(date != ""){
       // Create an object containing all the data for this day, for this agent
       var agentDailyData = {
         site: site,
         tz: tz,
-        equipe: equipe,
-        id_employe: id_employe,
-        agent: agent,
-        jour: jour,
-        activites:[]
+        team: team,
+        employeeId: employeeId,
+        agentName: agentName,
+        date: date,
+        activities:[]
       }
 
       // If this days mentions "Repos", then it's a day off for the agent.
-      if(activite.match(/.*Repos.*/gi)){
+      if(activityName.match(/.*Repos.*/gi)){
         // Add the day off as an activity
-        agentDailyData.activites.push({
-          activite: activite,
+        agentDailyData.activities.push({
+          activityName: activityName,
           starttime: tStart,
           endtime: tEnd
         });
       }
-      // Add this day to the fullData tab
-      fullData.push(agentDailyData);
+      // Add this day to the agentDayActivityTab tab
+      agentDayActivityTab.push(agentDailyData);
     }
-    else{ // If this line doesn't contain a dta in "jour" > it contains an activity for a timeslot in the day.
+    else{ // If this line doesn't contain a dta in "date" > it contains an activity for a timeslot in the day.
     // Get the last agent day data
-    var agentDailyData = fullData[fullData.length-1];
+    var agentDailyData = agentDayActivityTab[agentDayActivityTab.length-1];
     // Add a new activity to this agent day activities.
-    agentDailyData.activites.push({
-      activite: activite,
+    agentDailyData.activities.push({
+      activityName: activityName,
       starttime: moment(starttime, "h:m a"),
       endtime: moment(endtime, "h:m a")
     });
@@ -84,40 +84,40 @@ fs.createReadStream("input.csv")
   splitHours();
 
   // Remove duplicates of the Matching table "activitiesList"
-  activitiesList = _.uniqBy(activitiesList, 'default');
+  activitiesList = _.uniqBy(activitiesList, 'specificName');
   console.log(activitiesList);
 
   // Aggregate agent's day data tab by day to get a tab matching a day to all agents' data for this day.
   finalTab = aggregatebyDate();
 
   // Create a csv fiel to push the reults
-  var stream = fs.createWriteStream("my_file.csv");
+  var stream = fs.createWriteStream("output.csv");
   stream.once('open', function(fd) {
     // Leave 3 cells at the begining of the first row
     var cTab = ["", "", ""];
     // Write all timeslots at the firstline
-    creneaux.forEach(function(c){cTab.push(c.format("HH:mm"))});
+    timeslots.forEach(function(c){cTab.push(c.format("HH:mm"))});
     stream.write(cTab.join(",") + "\n");
 
     // For each date
-    Object.keys(finalTab).forEach(function(jour){
+    Object.keys(finalTab).forEach(function(date){
       // Write the day and line return
-      stream.write(jour + "\n");
+      stream.write(date + "\n");
 
       // Get all the agents' data for this day
-      jour = finalTab[jour];
-      jour.forEach(function(agentDayData){
+      date = finalTab[date];
+      date.forEach(function(agentDayData){
         // Tab containing each cell of this line
         var lineData = [];
         // Add the first name of the agent
-        lineData.push(agentDayData.agent.split(" ")[0]);
+        lineData.push(agentDayData.agentName.split(" ")[0]);
         // Add the last name of the agent
-        lineData.push(agentDayData.agent.split(" ")[1]);
+        lineData.push(agentDayData.agentName.split(" ")[1]);
         // Add the site of this agent
         lineData.push(agentDayData.site);
         // For each timeslot activity of this agent, add the generic activity name to the line
-        agentDayData.finalActivities.forEach(function(activity){
-          lineData.push(activity.activite);
+        agentDayData.timeslotActivities.forEach(function(activity){
+          lineData.push(activity.activityName);
         })
         // Write the line
         stream.write(lineData.join(",") + "\n");
@@ -135,57 +135,57 @@ fs.createReadStream("input.csv")
   If the activity starts before the timeslot and ends after the timeslot > TRUE
   Otherwise > FALSE
 */
-var getTimeInCreneau = function(activite, creneau){
-  if(activite.starttime.isSame(creneau)){
+var getActivityTimeInTimeslot = function(activity, timeslot){
+  if(activity.starttime.isSame(timeslot)){
     return true;
-  }else if(activite.starttime.isBefore(creneau) &&
-            activite.endtime.isAfter(creneau))
+  }else if(activity.starttime.isBefore(timeslot) &&
+            activity.endtime.isAfter(timeslot))
     return true;
 }
 
 // Split activities accross timeslots
 var splitHours = function(){
   // For each element in the full data tab
-  fullData.forEach(function(data){
-    // Create a new tab named finalActivities
-    data.finalActivities = [];
+  agentDayActivityTab.forEach(function(data){
+    // Create a new tab named timeslotActivities
+    data.timeslotActivities = [];
     // For each time slot defined at the top
-    creneaux.forEach(function(creneau){
-      var creneauActivite = {
-        creneau: creneau,
-        activite: ""
+    timeslots.forEach(function(timeslot){
+      var timeslotActivity = {
+        timeslot: timeslot,
+        activityName: ""
       }
       // Find the activity for this timeslot based on the list of activities for this agent & day
-      data.activites.forEach(function(activite){
+      data.activities.forEach(function(activity){
         // If the activity has time in this time slot
-        if(getTimeInCreneau(activite, creneau)){
+        if(getActivityTimeInTimeslot(activity, timeslot)){
           // Translate from the specific activity to a generic one
-          creneauActivite.activite = translateActivite(activite.activite)
-          // Fill the matching table between specific activity name to generic/translated one.
-          activitiesList.push({default: activite.activite, translated: creneauActivite.activite });
+          timeslotActivity.activityName = getGenericActivityName(activity.activityName)
+          // Fill the matching table between specific activity name to specificName/genericName one.
+          activitiesList.push({specificName: activity.activityName, genericName: timeslotActivity.activityName });
         }
       });
-      // Add this data matchoing a timeslot with a generic activity name to the finalActivities tab of this agent & day data.
-      data.finalActivities.push(creneauActivite);
+      // Add this data matchoing a timeslot with a generic activity name to the timeslotActivities tab of this agent & day data.
+      data.timeslotActivities.push(timeslotActivity);
     })
   })
 }
 
 // Matches a specific activity name to a generic one based on what the specific activity name contains.
-var translateActivite = function(activite){
-  if(activite.match(/.*Entrant.*/)){
+var getGenericActivityName = function(specificActivityName){
+  if(specificActivityName.match(/.*Entrant.*/)){
     return "AE"; // Inbound
-  }else if (activite.match(/.*Sortant.*/gi)){
+  }else if (specificActivityName.match(/.*Sortant.*/gi)){
     return "AS"; // Outbound
-  }else if (activite.match(/.*Email.*/gi)){
+  }else if (specificActivityName.match(/.*Email.*/gi)){
     return "@"; // Email
-  }else if (activite.match(/.*Chat.*/gi)){
+  }else if (specificActivityName.match(/.*Chat.*/gi)){
     return "C"; // Chat
-  }else if (activite.match(/.*Repas.*/gi)){
+  }else if (specificActivityName.match(/.*Repas.*/gi)){
     return "R"; // Lunch
-  }else if (activite.match(/.*repos.*/gi)){
+  }else if (specificActivityName.match(/.*repos.*/gi)){
     return "JR"; // Day off
-  }else if (activite.match(/.*Pause.*/gi)){
+  }else if (specificActivityName.match(/.*Pause.*/gi)){
     return "P";  // Pause
   }
 }
@@ -197,12 +197,12 @@ var aggregatebyDate = function(){
   // The final tab
   var finalDataPresentation = [];
 
-  // Run through all the agent's single day data from fullData tab.
-  fullData.forEach(function(data){
-    if(!finalDataPresentation[data.jour])
-      finalDataPresentation[data.jour] = [];
+  // Run through all the agent's single day data from agentDayActivityTab tab.
+  agentDayActivityTab.forEach(function(data){
+    if(!finalDataPresentation[data.date])
+      finalDataPresentation[data.date] = [];
 
-    finalDataPresentation[data.jour].push(data);
+    finalDataPresentation[data.date].push(data);
   });
 
   return finalDataPresentation;
