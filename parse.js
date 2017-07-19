@@ -9,6 +9,8 @@
   *   > -end, -e => end time for timeslots
   *   > -ts, -timeslot => duration of timeslots
   *   > -f, -file => input file name
+  *   > -a, -activtymap => will generate the specific/geenric activities names map csv file
+  *   > -use_as, -use_activityset => will use activity set each timesolt where there is no other activity
 */
 
 var fs = require("fs")
@@ -20,13 +22,20 @@ var agentDayActivityTab = [];  // The tab containing all teh data for each agent
 var lineNbr = 0;
 var finalTab;
 var activitiesList = [];
+var activityMap = [];
+var useActivitySet = false;
 var inputFilename = "input.csv";
 
 var tStart = moment("8:00 am", "h:m a");  // Start of the day for timeslots
 var tEnd = moment("7:30 pm", "h:m a");    // End of the day for timeslots
 var tTimeslotLength = 15;                 // Timeslots length
 
-var helpModeActive = false;
+var RUNMODE = {
+  PARSE: 'parse',             // Will generate the output files
+  HELP: 'help',               // Will only display help
+  ACTIVITYMAP: 'activitymap'  // Will generate a file containing a map for specific activity names / generic activity names
+}
+var runMode = RUNMODE.PARSE;
 process.argv.forEach(function (val, index, array) {
   if(index > 1){
     switch(val){
@@ -34,7 +43,7 @@ process.argv.forEach(function (val, index, array) {
       case '-help':
       case '--h':
       case '--help':
-        helpModeActive = true;
+        runMode = RUNMODE.HELP;
         break;
       case '-s':
       case '-start':
@@ -52,16 +61,31 @@ process.argv.forEach(function (val, index, array) {
       case '-file':
         inputFilename = process.argv[index+1];
         break;
+      case '-a':
+      case '-activitymap':
+        runMode = RUNMODE.ACTIVITYMAP;
+        break;
+      case '-use_as':
+      case '-use_activityset':
+        useActivitySet = true;
+        break;
       default:
         break;
     }
   }
 });
 
-if(helpModeActive)
-  showHelp();
-else
-  parse();
+switch(runMode){
+  case RUNMODE.ACTIVITYMAP:
+    parse();
+    break;
+  case RUNMODE.PARSE:
+    parse();
+    break;
+  default:
+    showHelp();
+    break;
+}
 
 function showHelp(){
   console.log('********************************************\n\
@@ -71,16 +95,20 @@ function showHelp(){
   *   > -end, -e  "7:30 pm" => end time for timeslots \n\
   *   > -ts, -timeslot 15 => duration of timeslots (15 minutes)\n \
   *   > -f, -file input.csv => input file name\n\
+  *   > -a, -activitymap => will generate the specific/geenric activities names map csv file \n\
+  *   > -use_as, -use_activityset => will use activity set each timesolt where there is no other activity \n\
   ********************************************\n');
 }
 
 function parse(){
+  // Display paramters
   console.log("********************************************")
   console.log("Parameters: \n \
     \t start: "+tStart.format("h:mm a")+"\n\
     \t end: "+tEnd.format("h:mm a")+"\n\
     \t timeslot: "+tTimeslotLength+" minutes\n\
-    \t inputfile: "+inputFilename);
+    \t inputfile: "+inputFilename+" \n\
+    \t will "+((!useActivitySet)?"NOT ":"")+"use activitySets where there is no other activity defined");
     console.log("********************************************\n")
 
   /* Create a list of time slots from 8am to 7:30 pm */
@@ -91,110 +119,143 @@ function parse(){
     var t = t.clone().add(tTimeslotLength, 'minutes')
   }while(t.isBefore(tEnd));
 
-  /* Read the input CSV file */
-  fs.createReadStream(inputFilename)
+  /* Read activities mapping tab */
+  fs.createReadStream("activity_map.csv")
   .pipe(csv())
   .on("data", function(data){
-    lineNbr++;
+    activityMap.push({ specificName : data[0], genericName: data[1]});
+  })
+  .on("end", function(){
+    readAndParseInputFile();
+  });
 
-    // Start reading each line starting at line 3
-    if(lineNbr>3){
-      var site = data[0];         // Site name
-      var tz = data[1];           // Timezone
-      var team = data[2];       // Team
-      var employeeId = data[3];   // Employee Id
-      var agentName = data[4];        // Agent name
-      var date = data[5];         // Day
-      var activityName = data[7];     // Acivity name
-      var starttime = data[8];    // Start time of the activity
-      var endtime = data[9];      // End time of the activity
+  var readAndParseInputFile = function(){
+    /* Read the input CSV file */
+    fs.createReadStream(inputFilename)
+    .pipe(csv())
+    .on("data", function(data){
+      lineNbr++;
 
-      // If the line contains a data in "date" > it's the reference line for this date
-      if(date != ""){
-        // Create an object containing all the data for this day, for this agent
-        var agentDailyData = {
-          site: site,
-          tz: tz,
-          team: team,
-          employeeId: employeeId,
-          agentName: agentName,
-          date: date,
-          activities:[]
+      // Start reading each line starting at line 3
+      if(lineNbr>3){
+        var site = data[0];         // Site name
+        var tz = data[1];           // Timezone
+        var team = data[2];       // Team
+        var employeeId = data[3];   // Employee Id
+        var agentName = data[4];        // Agent name
+        var date = data[5];         // Day
+        var activityName = data[7];     // Acivity name
+        var starttime = data[8];    // Start time of the activity
+        var endtime = data[9];      // End time of the activity
+
+        // If the line contains a data in "date" > it's the reference line for this date
+        if(date != ""){
+          // Create an object containing all the data for this day, for this agent
+          var agentDailyData = {
+            site: site,
+            tz: tz,
+            team: team,
+            employeeId: employeeId,
+            agentName: agentName,
+            date: date,
+            activitySet: {
+              activityName: activityName,
+              starttime: moment(starttime, "h:m a"),
+              endtime: moment(endtime, "h:m a")
+            },
+            activities:[]
+          }
+
+          // If this days mentions "Repos", then it's a day off for the agent.
+          if(activityName.match(/.*Repos.*/gi)){
+            // Add the day off as an activity
+            agentDailyData.activities.push({
+              activityName: activityName,
+              starttime: tStart,
+              endtime: tEnd
+            });
+          }
+          // Add this day to the agentDayActivityTab tab
+          agentDayActivityTab.push(agentDailyData);
         }
-
-        // If this days mentions "Repos", then it's a day off for the agent.
-        if(activityName.match(/.*Repos.*/gi)){
-          // Add the day off as an activity
+        else{ // If this line doesn't contain a dta in "date" > it contains an activity for a timeslot in the day.
+          // Get the last agent day data
+          var agentDailyData = agentDayActivityTab[agentDayActivityTab.length-1];
+          // Add a new activity to this agent day activities.
           agentDailyData.activities.push({
             activityName: activityName,
-            starttime: tStart,
-            endtime: tEnd
+            starttime: moment(starttime, "h:m a"),
+            endtime: moment(endtime, "h:m a")
           });
         }
-        // Add this day to the agentDayActivityTab tab
-        agentDayActivityTab.push(agentDailyData);
       }
-      else{ // If this line doesn't contain a dta in "date" > it contains an activity for a timeslot in the day.
-      // Get the last agent day data
-      var agentDailyData = agentDayActivityTab[agentDayActivityTab.length-1];
-      // Add a new activity to this agent day activities.
-      agentDailyData.activities.push({
-        activityName: activityName,
-        starttime: moment(starttime, "h:m a"),
-        endtime: moment(endtime, "h:m a")
-      });
-    }
-  }
-  })
-  .on("end", function(){ // When the reading of the file has ended
-    // Split activies accross time slots given at the top
-    splitHours();
+    })
+    .on("end", function(){ // When the reading of the file has ended
+      // Split activies accross time slots given at the top
+      splitHours();
 
-    // Remove duplicates of the Matching table "activitiesList"
-    activitiesList = _.uniqBy(activitiesList, 'specificName');
-    console.log(activitiesList);
+      // Remove duplicates of the Matching table "activitiesList"
+      activitiesList = _.uniqBy(activitiesList, 'specificName');
+      console.log(activitiesList);
 
-    // Aggregate agent's day data tab by day to get a tab matching a day to all agents' data for this day.
-    finalTab = aggregatebyDate();
-
-    // Create a csv fiel to push the reults
-    var stream = fs.createWriteStream("output.csv");
-    stream.once('open', function(fd) {
-      // Leave 3 cells at the begining of the first row
-      var cTab = ["", "", ""];
-      // Write all timeslots at the firstline
-      timeslots.forEach(function(c){cTab.push(c.format("HH:mm"))});
-      stream.write(cTab.join(",") + "\n");
-
-      // For each date
-      Object.keys(finalTab).forEach(function(date){
-        // Write the day and line return
-        stream.write(date + "\n");
-
-        // Get all the agents' data for this day
-        date = finalTab[date];
-        date.forEach(function(agentDayData){
-          // Tab containing each cell of this line
-          var lineData = [];
-          // Add the first name of the agent
-          lineData.push(agentDayData.agentName.split(" ")[0]);
-          // Add the last name of the agent
-          lineData.push(agentDayData.agentName.split(" ")[1]);
-          // Add the site of this agent
-          lineData.push(agentDayData.site);
-          // For each timeslot activity of this agent, add the generic activity name to the line
-          agentDayData.timeslotActivities.forEach(function(activity){
-            lineData.push(activity.activityName);
+      // In this mode we want to generate a tab to match specific and generic activities names
+      if(runMode == RUNMODE.ACTIVITYMAP){
+        // Create a csv file to create a tab matching specific activities names and generic name
+        var stream = fs.createWriteStream("activity_map.csv");
+        stream.once('open', function(fd) {
+          activitiesList.forEach(function(activity){
+            stream.write(activity.specificName + "," + activity.genericName + "\n");
           })
-          // Write the line
-          stream.write(lineData.join(",") + "\n");
+          stream.end();
         });
-        // Write a line return after the last elemnt for this day.
-        stream.write("\n");
-      })
-      stream.end();
+      }
+
+      // In this mode we want to export the output file.
+      if(runMode == RUNMODE.PARSE){
+        // Aggregate agent's day data tab by day to get a tab matching a day to all agents' data for this day.
+        finalTab = aggregatebyDate();
+
+        // Create a csv fiel to push the reults
+        var stream = fs.createWriteStream("output.csv");
+        stream.once('open', function(fd) {
+          // Leave 3 cells at the begining of the first row
+          var cTab = ["", "", "", ""];
+          // Write all timeslots at the firstline
+          timeslots.forEach(function(c){cTab.push(c.format("HH:mm"))});
+          stream.write(cTab.join(",") + "\n");
+
+          // For each date
+          Object.keys(finalTab).forEach(function(date){
+            // Write the day and line return
+            stream.write(date + "\n");
+
+            // Get all the agents' data for this day
+            date = finalTab[date];
+            date.forEach(function(agentDayData){
+              // Tab containing each cell of this line
+              var lineData = [];
+              // Add the first name of the agent
+              lineData.push(agentDayData.agentName.split(" ")[0]);
+              // Add the last name of the agent
+              lineData.push(agentDayData.agentName.split(" ")[1]);
+              // Add the site of this agent
+              lineData.push(agentDayData.site);
+              // For each timeslot activity of this agent, add the generic activity name to the line
+              agentDayData.timeslotActivities.forEach(function(activity){
+                lineData.push(activity.activityName);
+              })
+              // Write the line
+              stream.write(lineData.join(",") + "\n");
+            });
+            // Write a line return after the last elemnt for this day.
+            stream.write("\n");
+          })
+          stream.end();
+        });
+      }
     });
-  });
+
+  }
 
   /*
     Determines if the activity has time in the given timeslot
@@ -218,20 +279,34 @@ function parse(){
       data.timeslotActivities = [];
       // For each time slot defined at the top
       timeslots.forEach(function(timeslot){
+        // Create a timeslot activity definition
         var timeslotActivity = {
           timeslot: timeslot,
           activityName: ""
         }
         // Find the activity for this timeslot based on the list of activities for this agent & day
+        var foundActivity = false;
         data.activities.forEach(function(activity){
           // If the activity has time in this time slot
           if(getActivityTimeInTimeslot(activity, timeslot)){
+            foundActivity = true;
             // Translate from the specific activity to a generic one
             timeslotActivity.activityName = getGenericActivityName(activity.activityName)
             // Fill the matching table between specific activity name to specificName/genericName one.
             activitiesList.push({specificName: activity.activityName, genericName: timeslotActivity.activityName });
           }
         });
+
+        if(!foundActivity && useActivitySet){
+          // If the activity has time in this time slot
+          if(getActivityTimeInTimeslot(data.activitySet, timeslot)){
+            // Translate from the specific activity to a generic one
+            timeslotActivity.activityName = getGenericActivityName(data.activitySet.activityName)
+            // Fill the matching table between specific activity name to specificName/genericName one.
+            activitiesList.push({specificName: data.activitySet.activityName, genericName: timeslotActivity.activityName });
+          }
+        }
+
         // Add this data matchoing a timeslot with a generic activity name to the timeslotActivities tab of this agent & day data.
         data.timeslotActivities.push(timeslotActivity);
       })
@@ -240,21 +315,13 @@ function parse(){
 
   // Matches a specific activity name to a generic one based on what the specific activity name contains.
   var getGenericActivityName = function(specificActivityName){
-    if(specificActivityName.match(/.*Entrant.*/)){
-      return "AE"; // Inbound
-    }else if (specificActivityName.match(/.*Sortant.*/gi)){
-      return "AS"; // Outbound
-    }else if (specificActivityName.match(/.*Email.*/gi)){
-      return "@"; // Email
-    }else if (specificActivityName.match(/.*Chat.*/gi)){
-      return "C"; // Chat
-    }else if (specificActivityName.match(/.*Repas.*/gi)){
-      return "R"; // Lunch
-    }else if (specificActivityName.match(/.*repos.*/gi)){
-      return "JR"; // Day off
-    }else if (specificActivityName.match(/.*Pause.*/gi)){
-      return "P";  // Pause
-    }
+    var found = activityMap.find(function(activity){
+      return (specificActivityName.match(new RegExp(activity.specificName)) != null);
+    });
+    if(found)
+      return found.genericName;
+    else
+      return "";
   }
 
   /*
